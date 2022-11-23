@@ -3,6 +3,10 @@ uuid = "883c535b-216d-4c73-ba39-c424e5dac4c2"
 authors = ["Andrea Di Gioacchino"]
 version = "0.1.0"
 
+[deps]
+BioSequences = "7e6ae17a-c86d-528c-b3b9-7f778a29fe59"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+
 [compat]
 julia = "1.8"
 
