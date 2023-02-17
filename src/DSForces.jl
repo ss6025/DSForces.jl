@@ -9,11 +9,12 @@ const allowed_alphabet = [DNA_A, DNA_C, DNA_G, DNA_T]
 const allowed_pairs = [[DNA_A, DNA_T], [DNA_C, DNA_G], [DNA_G, DNA_T], [DNA_T, DNA_A], [DNA_G, DNA_C], [DNA_T, DNA_G]]
 
 
-function CompSegmLenToDSForce(CSL::Int, alpha::AbstractFloat, seqlen::Int, c0::AbstractFloat=-2.2)
+function CompSegmLenToDSForce(CSL::Int, alpha::AbstractFloat, seqlen::Int, 
+                              seqlen_forced::Union{Int, Missing}=seqlen, c0::AbstractFloat=-2.2)
     if CSL < 2
         return NaN
     else
-        return log(1 / alpha) - 2 * log(seqlen) / (CSL - c0)
+        return log(1 / alpha) - (log(seqlen) + log(seqlen_forced)) / (CSL - c0)
     end
 end
 
@@ -61,6 +62,53 @@ function FindLongestComplementarySegment(seq::Union{LongDNA{4}, LongSubSeq{DNAAl
         return maxL
     end
 end
+
+
+function FindLongestComplementarySegment(seq::Union{LongDNA{4}, LongSubSeq{DNAAlphabet{4}}}, 
+                                         seqA_range::UnitRange{Int}, return_coords::Bool=false)
+    pattern_seq = LongDNA{4}(replace(String(seq), "A" => "T", "C" => "G", "G" => "Y", "T"=>"R"))
+    L = length(seq)
+    maxL = 2
+    start_segm_pos = seqA_range[1]
+    @inbounds for i in seqA_range
+        for k in i+maxL-1:seqA_range[end]
+            esq = ExactSearchQuery(reverse(pattern_seq[i:k]), iscompatible)
+            c1 = occursin(esq, @view seq[1:i-1]) # paired segment is before seqA
+            c2 = occursin(esq, @view seq[k+1:end]) # paired segment is after seqA
+            if (!(c1) & !(c2))
+                if (k - i) > maxL
+                    maxL = k - i
+                    start_segm_pos = i
+                elseif (k - i) == maxL 
+                    start_segm_pos = i
+                end
+                break
+            elseif k == seqA_range[end]
+                if (k - i + 1) > maxL
+                    maxL = k - i + 1
+                    start_segm_pos = i
+                elseif (k - i + 1) == maxL 
+                    start_segm_pos = i
+                end
+            end
+        end
+    end
+    if return_coords
+        eqs = ExactSearchQuery(reverse(pattern_seq[start_segm_pos:start_segm_pos+maxL-1]), iscompatible)
+        pre_match = findlast(eqs, seq[1:start_segm_pos-maxL])
+        post_match = findfirst(eqs, seq[start_segm_pos+maxL:end])
+        if isnothing(pre_match) & isnothing(post_match)
+            return L:L, L:L
+        elseif !(isnothing(post_match))
+            return start_segm_pos:start_segm_pos+maxL-1, post_match .+ (start_segm_pos+maxL-1)
+        else
+            return pre_match, start_segm_pos:start_segm_pos+maxL-1
+        end
+    else
+        return maxL
+    end
+end
+
 
 function FindLongestComplementarySegmentLast(seq::Union{LongDNA{4}, LongSubSeq{DNAAlphabet{4}}})
     pattern_seq = LongDNA{4}(replace(String(seq), "A" => "T", "C" => "G", "G" => "Y", "T"=>"R"))
@@ -137,16 +185,28 @@ end
 
 function ComputeDSForce(seq::Union{LongDNA{4}, LongSubSeq{DNAAlphabet{4}}};
                         return_LCS_positions::Bool=false, 
-                        sliding_window_length::Union{Int, Missing}=missing)
+                        sliding_window_length::Union{Int, Missing}=missing,
+                        seqA_range::Union{UnitRange{Int}, Missing}=missing)
     if ismissing(sliding_window_length)
         α = ComputeAlpha(seq)
         if return_LCS_positions
-            rangeA, rangeB = FindLongestComplementarySegment(seq, true)
-            CSL = length(rangeA)
-            return CompSegmLenToDSForce(CSL, α, length(seq)), rangeA, rangeB
+            if ismissing(seqA_range)
+                rangeA, rangeB = FindLongestComplementarySegment(seq, true)
+                CSL = length(rangeA)
+                return CompSegmLenToDSForce(CSL, α, length(seq)), rangeA, rangeB
+            else
+                rangeA, rangeB = FindLongestComplementarySegment(seq, seqA_range, true)
+                CSL = length(rangeA)
+                return CompSegmLenToDSForce(CSL, α, length(seq), length(seqA_range)), rangeA, rangeB
+            end
         else
-            CSL = FindLongestComplementarySegment(seq)
-            return CompSegmLenToDSForce(CSL, α, length(seq))
+            if ismissing(seqA_range)
+                CSL = FindLongestComplementarySegment(seq)
+                return CompSegmLenToDSForce(CSL, α, length(seq))
+            else
+                CSL = FindLongestComplementarySegment(seq, seqA_range)
+                return CompSegmLenToDSForce(CSL, α, length(seq), length(seqA_range))
+            end
         end
     else
         CSLs, alphas, range1s, range2s = FindLongestComplementarySegmentSliding(seq, sliding_window_length)
@@ -161,11 +221,13 @@ end
 
 function ComputeDSForce(seq::AbstractString;
                         return_LCS_positions::Bool=false, 
-                        sliding_window_length::Union{Int, Missing}=missing)
+                        sliding_window_length::Union{Int, Missing}=missing,
+                        seqA_range::Union{UnitRange{Int}, Missing}=missing)
     # here I should check that no non-ACTG symbol is present
     DNA_seq = LongDNA{4}(seq)
     return ComputeDSForce(DNA_seq; return_LCS_positions=return_LCS_positions, 
-                            sliding_window_length=sliding_window_length)
+                            sliding_window_length=sliding_window_length, 
+                            seqA_range=seqA_range)
 end
 
 
