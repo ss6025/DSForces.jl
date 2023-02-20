@@ -9,6 +9,17 @@ const allowed_alphabet = [DNA_A, DNA_C, DNA_G, DNA_T]
 const allowed_pairs = [[DNA_A, DNA_T], [DNA_C, DNA_G], [DNA_G, DNA_T], [DNA_T, DNA_A], [DNA_G, DNA_C], [DNA_T, DNA_G]]
 
 
+"""
+    CompSegmLenToDSForce(CSL::Int, alpha::AbstractFloat, seqlen::Int, 
+                              seqlen_forced::Union{Int, Missing}=seqlen, c0::AbstractFloat=-2.2)
+
+Given the length of the longest complementary segmenet `CSL`, the value of the probability
+`alpha` that two randomly chosen nucleotide in the sequence under analysis form an 
+allowed pair, and the length of the sequence under analysis `lenseq`, it computes the DS force.
+The value of the parameter `c0` has been fixed by synthetic tests, see the accompanying paper.
+If one of the two complementary sequences is forced to be within an interval (whose length is 
+`seqlen_forced`), the DS force computation is adapted to this case. 
+"""
 function CompSegmLenToDSForce(CSL::Int, alpha::AbstractFloat, seqlen::Int, 
                               seqlen_forced::Union{Int, Missing}=seqlen, c0::AbstractFloat=-2.2)
     if CSL < 2
@@ -19,6 +30,12 @@ function CompSegmLenToDSForce(CSL::Int, alpha::AbstractFloat, seqlen::Int,
 end
 
 
+"""
+    ComputeAlpha(seq::Union{LongDNA{4}, LongSubSeq{DNAAlphabet{4}}})
+
+Compute the probability ("α") that two randomly chosen nucleotide in `seq` form an 
+allowed pair (defined by the global variable `allowed_pairs`).
+"""
 function ComputeAlpha(seq::Union{LongDNA{4}, LongSubSeq{DNAAlphabet{4}}})
     seqlen = length(seq)
     nt_usage = countmap(seq)
@@ -32,6 +49,17 @@ function ComputeAlpha(seq::Union{LongDNA{4}, LongSubSeq{DNAAlphabet{4}}})
 end
 
 
+"""
+    FindLongestComplementarySegment(seq::Union{LongDNA{4}, LongSubSeq{DNAAlphabet{4}}}, 
+                                         return_coords::Bool=false)
+
+Find the two subsequences of `seq` that can 
+form the longest possible double-strand segement (including Watson-Crick and Wobble pairs).
+If `return_coords` the ranges encompassing the two 'complementary' sequences are returned,
+otherwise only the length of the segment is returned.
+When different ranges are possible, those closest to the end of the sequence ("downstream") 
+are chosen. 
+"""
 function FindLongestComplementarySegment(seq::Union{LongDNA{4}, LongSubSeq{DNAAlphabet{4}}}, 
                                          return_coords::Bool=false)
     pattern_seq = LongDNA{4}(replace(String(seq), "A" => "T", "C" => "G", "G" => "Y", "T"=>"R"))
@@ -64,6 +92,15 @@ function FindLongestComplementarySegment(seq::Union{LongDNA{4}, LongSubSeq{DNAAl
 end
 
 
+"""
+    FindLongestComplementarySegment(seq::Union{LongDNA{4}, LongSubSeq{DNAAlphabet{4}}}, 
+                                         seqA_range::UnitRange{Int}, return_coords::Bool=false)
+
+Find the longest subsequence of `seq` that is within `seqA_range` and can form a double-strand 
+segement (including Watson-Crick and Wobble pairs) with another subsequence of `seq`.
+If `return_coords` the ranges encompassing the two 'complementary' sequences are returned,
+otherwise only the length of the segment is returned.
+"""
 function FindLongestComplementarySegment(seq::Union{LongDNA{4}, LongSubSeq{DNAAlphabet{4}}}, 
                                          seqA_range::UnitRange{Int}, return_coords::Bool=false)
     pattern_seq = LongDNA{4}(replace(String(seq), "A" => "T", "C" => "G", "G" => "Y", "T"=>"R"))
@@ -110,6 +147,14 @@ function FindLongestComplementarySegment(seq::Union{LongDNA{4}, LongSubSeq{DNAAl
 end
 
 
+"""
+    FindLongestComplementarySegmentLast(seq::Union{LongDNA{4}, LongSubSeq{DNAAlphabet{4}}})
+
+Find the longest subsequence of `seq` that ends at the end of `seq` and can form a double-strand 
+segement (including Watson-Crick and Wobble pairs) with another subsequence of `seq`, and return
+the coordinates of these two subsequences.
+NOTE: This function is only used to speed up the sliding computation of DS forces.
+"""
 function FindLongestComplementarySegmentLast(seq::Union{LongDNA{4}, LongSubSeq{DNAAlphabet{4}}})
     pattern_seq = LongDNA{4}(replace(String(seq), "A" => "T", "C" => "G", "G" => "Y", "T"=>"R"))
     L = length(seq)
@@ -132,6 +177,19 @@ function FindLongestComplementarySegmentLast(seq::Union{LongDNA{4}, LongSubSeq{D
     end
 end
 
+
+"""
+    FindLongestComplementarySegmentSliding(seq::LongDNA{4}, 
+    sliding_window_length::Int=min(length(seq), 3000))
+
+Does the same as `FindLongestComplementarySegment` on sliding windows of length
+`sliding_window_length` and with stride 1. It returns four vectors, each with one 
+value for each sliding window: 
+1, the lengths of the longest complementary segment; 
+2, the values of α (see `ComputeAlpha`); 
+3, the position of the upstream complementary subsequence;
+4, the position of the downstream complementary subsequence.
+"""
 function FindLongestComplementarySegmentSliding(seq::LongDNA{4}, 
     sliding_window_length::Int=min(length(seq), 3000))
     LCSLs = Int[]
@@ -183,51 +241,67 @@ function FindLongestComplementarySegmentSliding(seq::LongDNA{4},
 end
 
 
-function ComputeDSForce(seq::Union{LongDNA{4}, LongSubSeq{DNAAlphabet{4}}};
-                        return_LCS_positions::Bool=false, 
-                        sliding_window_length::Union{Int, Missing}=missing,
-                        seqA_range::Union{UnitRange{Int}, Missing}=missing)
-    if ismissing(sliding_window_length)
-        α = ComputeAlpha(seq)
-        if return_LCS_positions
-            if ismissing(seqA_range)
-                rangeA, rangeB = FindLongestComplementarySegment(seq, true)
-                CSL = length(rangeA)
-                return CompSegmLenToDSForce(CSL, α, length(seq)), rangeA, rangeB
-            else
-                rangeA, rangeB = FindLongestComplementarySegment(seq, seqA_range, true)
-                CSL = length(rangeA)
-                return CompSegmLenToDSForce(CSL, α, length(seq), length(seqA_range)), rangeA, rangeB
-            end
-        else
-            if ismissing(seqA_range)
-                CSL = FindLongestComplementarySegment(seq)
-                return CompSegmLenToDSForce(CSL, α, length(seq))
-            else
-                CSL = FindLongestComplementarySegment(seq, seqA_range)
-                return CompSegmLenToDSForce(CSL, α, length(seq), length(seqA_range))
-            end
-        end
+"""
+    ComputeDSForce(
+            seq::Union{AbstractString, LongDNA{4}, LongSubSeq{DNAAlphabet{4}}};
+            return_LCS_positions::Bool=false, 
+            sliding_window_length::Union{Int, Missing}=missing,
+            seqA_range::Union{UnitRange{Int}, Missing}=missing)
+
+Given the sequence `seq`, compute its DS force.
+If `return_LCS_positions`, the positions of the subsequences forming the 
+longest double-strand segment are returned.
+If `sliding_window_length` is provided, the DS force computation is done for 
+sliding windows of that length, with stride 1.
+If a range is specified as `seqA_range`, one of the two fully complementary 
+is forced to be within the provided range.
+
+WARNGING: specifying a `seqA_range` has no effect if also a 
+`sliding_window_length` is provided.
+"""
+function ComputeDSForce(
+            seq::Union{AbstractString, LongDNA{4}, LongSubSeq{DNAAlphabet{4}}};
+            return_LCS_positions::Bool=false, 
+            sliding_window_length::Union{Int, Missing}=missing,
+            seqA_range::Union{UnitRange{Int}, Missing}=missing)
+    if typeof(seq) <: AbstractString
+        return ComputeDSForce(LongDNA{4}(seq); return_LCS_positions=return_LCS_positions, 
+                sliding_window_length=sliding_window_length, 
+                seqA_range=seqA_range)
     else
-        CSLs, alphas, range1s, range2s = FindLongestComplementarySegmentSliding(seq, sliding_window_length)
-        DSFs = [CompSegmLenToDSForce(x, y, sliding_window_length) for (x,y) in zip(CSLs, alphas)]
-        if return_LCS_positions
-            return DSFs, range1s, range2s
+        # return missing if ambiguous nucletides are present
+        (sum(isambiguous.(seq)) > 0) && return missing
+        if ismissing(sliding_window_length)
+            α = ComputeAlpha(seq)
+            if return_LCS_positions
+                if ismissing(seqA_range)
+                    rangeA, rangeB = FindLongestComplementarySegment(seq, true)
+                    CSL = length(rangeA)
+                    return CompSegmLenToDSForce(CSL, α, length(seq)), rangeA, rangeB
+                else
+                    rangeA, rangeB = FindLongestComplementarySegment(seq, seqA_range, true)
+                    CSL = length(rangeA)
+                    return CompSegmLenToDSForce(CSL, α, length(seq), length(seqA_range)), rangeA, rangeB
+                end
+            else
+                if ismissing(seqA_range)
+                    CSL = FindLongestComplementarySegment(seq)
+                    return CompSegmLenToDSForce(CSL, α, length(seq))
+                else
+                    CSL = FindLongestComplementarySegment(seq, seqA_range)
+                    return CompSegmLenToDSForce(CSL, α, length(seq), length(seqA_range))
+                end
+            end
         else
-            return DSFs
+            CSLs, alphas, range1s, range2s = FindLongestComplementarySegmentSliding(seq, sliding_window_length)
+            DSFs = [CompSegmLenToDSForce(x, y, sliding_window_length) for (x,y) in zip(CSLs, alphas)]
+            if return_LCS_positions
+                return DSFs, range1s, range2s
+            else
+                return DSFs
+            end
         end
     end
-end
-
-function ComputeDSForce(seq::AbstractString;
-                        return_LCS_positions::Bool=false, 
-                        sliding_window_length::Union{Int, Missing}=missing,
-                        seqA_range::Union{UnitRange{Int}, Missing}=missing)
-    # here I should check that no non-ACTG symbol is present
-    DNA_seq = LongDNA{4}(seq)
-    return ComputeDSForce(DNA_seq; return_LCS_positions=return_LCS_positions, 
-                            sliding_window_length=sliding_window_length, 
-                            seqA_range=seqA_range)
 end
 
 
