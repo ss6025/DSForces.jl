@@ -64,6 +64,12 @@ end
     @test DSForces.FindLongestComplementarySegment(LongDNA{4}(test3)) == 12
     @test DSForces.ComputeDSForce(test3) ≈ -0.077 atol = 0.001
 
+    # chr1, rand_choice, check that it is consistent
+    for s in 1:3
+        t_segs = DSForces.FindLongestComplementarySegment(LongDNA{4}(test3), true, rand_choice=true, seed= 10 * s)
+        @test length(t_segs[1]) == length(t_segs[2]) == 12
+    end
+
     # test with a 'N'
     test4 = "AGATCGAGACCATCCTGGCCAACATGGTGAAATCCCGTCTCTACTAAAATN"
     @test ismissing(ComputeDSForce(test4))

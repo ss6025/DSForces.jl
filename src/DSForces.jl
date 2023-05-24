@@ -2,6 +2,7 @@ module DSForces
 
 using BioSequences
 using StatsBase
+using Random
 
 export ComputeDSForce
 
@@ -51,6 +52,8 @@ end
 
 """
     FindLongestComplementarySegment(seq::Union{LongDNA{4}, LongSubSeq{DNAAlphabet{4}}}, 
+                                         return_coords::Bool=false; rand_choice::Bool=false, 
+                                         seed::Union{Missing, Int}=missing)
                                          return_coords::Bool=false)
 
 Find the two subsequences of `seq` that can 
@@ -58,33 +61,45 @@ form the longest possible double-strand segement (including Watson-Crick and Wob
 If `return_coords` the ranges encompassing the two 'complementary' sequences are returned,
 otherwise only the length of the segment is returned.
 When different ranges are possible, those closest to the end of the sequence ("downstream") 
-are chosen. 
+are chosen, unless `rand_choice` is set to `true`, in which case a random choice is made. 
 """
 function FindLongestComplementarySegment(seq::Union{LongDNA{4}, LongSubSeq{DNAAlphabet{4}}}, 
-                                         return_coords::Bool=false)
+                                         return_coords::Bool=false; rand_choice::Bool=false, 
+                                         seed::Union{Missing, Int}=missing)
     pattern_seq = LongDNA{4}(replace(String(seq), "A" => "T", "C" => "G", "G" => "Y", "T"=>"R"))
     L = length(seq)
     maxL = 2
-    start_segm_pos = 1
+    start_segm_poss = [1]
     @inbounds for i in 1:L
         for k in i+maxL-1:L
             if !(occursin(ExactSearchQuery(reverse(pattern_seq[i:k]), iscompatible), @view seq[k+1:end]))
                 if (k - i) > maxL
                     maxL = k - i
-                    start_segm_pos = i
+                    start_segm_poss = [i]
                 elseif (k - i) == maxL 
-                    start_segm_pos = i
+                    push!(start_segm_poss, i)
                 end
                 break
             end
         end
     end
     if return_coords
+        if rand_choice
+            ismissing(seed) ? rngX = Xoshiro() : rngX = Xoshiro(seed)
+            start_segm_pos = rand(rngX, start_segm_poss) # random choice of starting position
+        else
+            start_segm_pos = start_segm_poss[end] # downstream choice of starting position
+        end
         eqs = ExactSearchQuery(reverse(pattern_seq[start_segm_pos:start_segm_pos+maxL-1]), iscompatible)
-        if isnothing(findfirst(eqs, seq[start_segm_pos+maxL:end]))
+        downstream_poss = findall(eqs, seq[start_segm_pos+maxL:end]) 
+        if length(downstream_poss) == 0
             return L:L, L:L
         else
-            return start_segm_pos:start_segm_pos+maxL-1, findfirst(eqs, seq[start_segm_pos+maxL:end]) .+ (start_segm_pos+maxL-1)
+            if rand_choice
+                return start_segm_pos:start_segm_pos+maxL-1, rand(rngX, downstream_poss) .+ (start_segm_pos+maxL-1) # random choice of downstream position
+            else
+                return start_segm_pos:start_segm_pos+maxL-1, downstream_poss[1] .+ (start_segm_pos+maxL-1) # closest choice of downstream position
+            end
         end
     else
         return maxL

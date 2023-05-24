@@ -1,10 +1,11 @@
 name = "DSForces"
 uuid = "883c535b-216d-4c73-ba39-c424e5dac4c2"
 authors = ["Andrea Di Gioacchino"]
-version = "0.4.0"
+version = "0.5.0"
 
 [deps]
 BioSequences = "7e6ae17a-c86d-528c-b3b9-7f778a29fe59"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 
 [compat]
